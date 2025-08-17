@@ -38,7 +38,7 @@
           const product = docSnap.data();
           showProduct(product, barcode);
         } else {
-          productDetails.innerHTML = "<p style='color:red;'>Product not found!</p>";
+          productDetails.innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
         }
       } catch (err) {
         console.error("Error fetching:", err);
@@ -51,10 +51,21 @@
         <h3>${product.name}</h3>
         <p>Price: ₦${product.price}</p>
         <p>Stock: ${product.stock}</p>
-        <label>Quantity:</label>
-        <input type="number" id="qty-input" value="1" min="1" max="${product.stock}">
-        <button onclick="addToCart('${barcode}', '${product.name}', ${product.price}, ${product.stock})">Add</button>
+        <div style="display:flex; gap:5px; align-items:center;">
+          <button onclick="changeQty(-1)">➖</button>
+          <input type="number" id="qty-input" value="1" min="1" max="${product.stock}" style="width:60px; text-align:center;">
+          <button onclick="changeQty(1)">➕</button>
+        </div>
+        <button onclick="addToCart('${barcode}', '${product.name}', ${product.price}, ${product.stock})">Add to Cart</button>
       `;
+    }
+
+    // ✅ Quantity +/- button
+    window.changeQty = function(delta) {
+      const input = document.getElementById("qty-input");
+      let value = parseInt(input.value) + delta;
+      if (value < 1) value = 1;
+      input.value = value;
     }
 
     // ✅ Add to cart
@@ -74,7 +85,7 @@
       renderReceipt();
     }
 
-    // ✅ Render receipt with qty
+    // ✅ Render receipt
     function renderReceipt() {
       receiptItems.innerHTML = "";
       let total = 0;
@@ -107,11 +118,16 @@
           }
         }
 
-        // ✅ Print receipt with store details
+        // ✅ Print receipt auto-fit
         let receiptHTML = `
           <div style="text-align:center; font-family:monospace;">
             <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
-            <p>Oppt, PDP Office, Oraozi Road, Port Harcourt, Rivers State</p>
+            <p>Oppt, PDP Office, <br>Oraozi Road, Port Harcourt</p>
+            <p>08143084200, 09054796445</p>
+            <p>Date: ${new Date().toLocaleString()}</p>
+            <hr>
+            <p>Cashier: Staff!</p>
+            <p>Manager: Staff!</p>
             <hr>
             <h3>Purchase Receipt</h3>
           </div>
@@ -120,24 +136,22 @@
         let total = 0;
         cart.forEach(item => {
           total += item.price * item.qty;
-          receiptHTML += `
-            <p>${item.name} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>
-          `;
+          receiptHTML += `<p>${item.name} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>`;
         });
 
         receiptHTML += `
             <hr>
             <h3 style="text-align:right;">Total: ₦${total.toFixed(2)}</h3>
-            <p style="text-align:center;">Thank you for shopping with us!</p>
+            <p style="text-align:center;">✅ Thank you for shopping with us!</p>
           </div>
         `;
 
-        const printWin = window.open("", "", "width=400,height=600");
+        const printWin = window.open("", "", "width=400,height=auto");
         printWin.document.write(receiptHTML);
         printWin.document.close();
         printWin.print();
 
-        alert("Checkout successful!");
+        alert("✅ Checkout successful!");
         cart = [];
         renderReceipt();
         productDetails.innerHTML = "";
@@ -179,23 +193,18 @@
         if (docSnap.exists()) {
           const product = docSnap.data();
           const newStock = product.stock + qty;
-
           await updateDoc(docRef, { stock: newStock });
 
-          // ✅ Show result
           document.getElementById("refund-result").innerHTML = `
-            <p style="color:green;">
-              ✅ Refunded ${qty} x <b>${product.name}</b><br>
-              New Stock: ${newStock}
-            </p>
+            <p style="color:green;">✅ Refunded ${qty} x <b>${product.name}</b><br>New Stock: ${newStock}</p>
           `;
 
-          // ✅ Print Refund Receipt
-          const refundWin = window.open("", "", "width=400,height=600");
+          // ✅ Print refund receipt
+          const refundWin = window.open("", "", "width=400,height=auto");
           refundWin.document.write(`
             <div style="text-align:center; font-family:monospace;">
               <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
-              <p>Oppt, PDP Office, Oraozi Road, Port Harcourt, Rivers State</p>
+              <p>Oppt, PDP Office, Oraozi Road, Port Harcourt</p>
               <hr>
               <h3>REFUND RECEIPT</h3>
             </div>
@@ -209,15 +218,15 @@
           `);
           refundWin.document.close();
           refundWin.print();
-
         } else {
-          alert("Product not found!");
+          alert("❌ Product not found!");
         }
       } catch (err) {
         console.error("Refund error:", err);
       }
     });
   </script>
+
   <style>
     body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
     .container { max-width: 700px; margin: 30px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
