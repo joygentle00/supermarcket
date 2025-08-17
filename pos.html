@@ -9,6 +9,22 @@
     body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
     .container { max-width: 700px; margin: 30px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     h1, h3 { text-align: center; }
+
+    /* Back button */
+    .back-btn {
+      display: inline-block;
+      margin: 20px;
+      padding: 10px 18px;
+      background: #6c757d;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 14px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+    .back-btn:hover { background: #5a6268; }
+
     .search-container { display: flex; gap: 10px; margin-bottom: 20px; }
     .search-container input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
     .search-container button { padding: 10px 20px; border-radius: 8px; background: #28a745; color: white; border: none; cursor: pointer; }
@@ -22,6 +38,9 @@
   </style>
 </head>
 <body>
+  <!-- ✅ Back Button -->
+  <a href="index.html" class="back-btn">⬅ Back</a>
+
   <div class="container">
     <h1>Sales</h1>
     <div class="section">
@@ -47,145 +66,6 @@
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-    // ✅ Firebase Config
-    const firebaseConfig = {
-      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
-      authDomain: "sales-ebdb2.firebaseapp.com",
-      projectId: "sales-ebdb2",
-      storageBucket: "sales-ebdb2.firebasestorage.app",
-      messagingSenderId: "617047144694",
-      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
-      measurementId: "G-08PJMBHSXN"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const productDetails = document.getElementById("product-details");
-    const receiptItems = document.getElementById("receipt-items");
-    const receiptTotal = document.getElementById("receipt-total");
-    const manualBarcodeInput = document.getElementById("manual-barcode");
-    const searchButton = document.getElementById("search-btn");
-    const scannedBarcodeDisplay = document.getElementById("scanned-barcode");
-
-    let total = 0;
-    let cart = {}; // Store products with qty
-
-    // ✅ Add item to receipt/cart
-    function addToReceipt(product) {
-      if (!cart[product.barcode]) {
-        cart[product.barcode] = { ...product, qty: 1 };
-      } else {
-        cart[product.barcode].qty++;
-      }
-      renderReceipt();
-    }
-
-    // ✅ Render receipt UI
-    function renderReceipt() {
-      receiptItems.innerHTML = "";
-      total = 0;
-
-      Object.values(cart).forEach(item => {
-        const itemDiv = document.createElement("div");
-        const lineTotal = item.qty * item.price;
-        itemDiv.innerHTML = `
-          <span>${item.name} x${item.qty} (₦${item.price.toFixed(2)})</span>
-          <span>₦${lineTotal.toFixed(2)}</span>
-        `;
-        receiptItems.appendChild(itemDiv);
-        total += lineTotal;
-      });
-
-      receiptTotal.textContent = "Total: ₦" + total.toFixed(2);
-    }
-
-    // ✅ Fetch product from Firestore
-    async function loadProduct(barcode) {
-      try {
-        const docRef = doc(db, "products", barcode);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const product = { barcode, ...docSnap.data() };
-          productDetails.innerHTML = `
-            <strong>Product Found:</strong><br>
-            Name: ${product.name} <br>
-            Price: ₦${product.price} <br>
-            Stock: ${product.stock} <br>
-            <button id="add-btn">➕ Add to Cart</button>
-          `;
-          document.getElementById("add-btn").onclick = () => addToReceipt(product);
-        } else {
-          productDetails.innerHTML = "<span style='color:red;'>❌ Product not found</span>";
-        }
-      } catch (err) {
-        console.error("Error fetching product:", err);
-        productDetails.innerHTML = "<span style='color:red;'>⚠ Error loading product</span>";
-      }
-    }
-
-    // ✅ Manual search
-    searchButton.addEventListener("click", () => {
-      const barcode = manualBarcodeInput.value.trim();
-      if (barcode) {
-        scannedBarcodeDisplay.textContent = "Searching for: " + barcode;
-        loadProduct(barcode);
-      }
-    });
-
-    // ✅ Barcode scanner
-    function onScanSuccess(decodedText) {
-      scannedBarcodeDisplay.textContent = "Scanned: " + decodedText;
-      loadProduct(decodedText);
-    }
-    function onScanError(errorMessage) {}
-
-    const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-    scanner.render(onScanSuccess, onScanError);
-
-    // ✅ Checkout & Print
-    document.getElementById("checkout").addEventListener("click", () => {
-      if (Object.keys(cart).length === 0) {
-        alert("Cart is empty!");
-        return;
-      }
-
-      const printWindow = window.open("", "", "width=400,height=600");
-      const now = new Date().toLocaleString();
-
-      let receiptHTML = `
-        <h2 style="text-align:center;">K.AHA-GOD-ENTER. SUPERMARKET</h2>
-        <p style="text-align:center;">Oppt PDP office, Oroazi Road, Port Harcourt, Rivers State</p>
-        <hr>
-        <p>Date: ${now}</p>
-        <h3>Receipt</h3>
-      `;
-
-      Object.values(cart).forEach(item => {
-        receiptHTML += `
-          <p style="display:flex; justify-content:space-between;">
-            <span>${item.name} x${item.qty}</span>
-            <span>₦${(item.qty * item.price).toFixed(2)}</span>
-          </p>
-        `;
-      });
-
-      receiptHTML += `
-        <hr>
-        <p style="text-align:right;"><strong>Total: ₦${total.toFixed(2)}</strong></p>
-        <hr>
-        <p style="text-align:center;">Thank you for shopping with us!</p>
-      `;
-
-      printWindow.document.write(receiptHTML);
-      printWindow.document.close();
-      printWindow.print();
-    });
-  </script>
+  <!-- Keep your script logic here -->
 </body>
 </html>
