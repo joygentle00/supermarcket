@@ -5,26 +5,223 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sales Page</title>
   <script src="libs/html5-qrcode.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // ✅ Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
+      authDomain: "sales-ebdb2.firebaseapp.com",
+      projectId: "sales-ebdb2",
+      storageBucket: "sales-ebdb2.firebasestorage.app",
+      messagingSenderId: "617047144694",
+      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
+      measurementId: "G-08PJMBHSXN"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const productDetails = document.getElementById("product-details");
+    const receiptItems = document.getElementById("receipt-items");
+    const receiptTotal = document.getElementById("receipt-total");
+    const checkoutBtn = document.getElementById("checkout");
+
+    let cart = [];
+
+    // ✅ Fetch product by barcode
+    async function fetchProduct(barcode) {
+      try {
+        const docRef = doc(db, "products", barcode);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const product = docSnap.data();
+          showProduct(product, barcode);
+        } else {
+          productDetails.innerHTML = "<p style='color:red;'>Product not found!</p>";
+        }
+      } catch (err) {
+        console.error("Error fetching:", err);
+      }
+    }
+
+    // ✅ Show product with qty option
+    function showProduct(product, barcode) {
+      productDetails.innerHTML = `
+        <h3>${product.name}</h3>
+        <p>Price: ₦${product.price}</p>
+        <p>Stock: ${product.stock}</p>
+        <label>Quantity:</label>
+        <input type="number" id="qty-input" value="1" min="1" max="${product.stock}">
+        <button onclick="addToCart('${barcode}', '${product.name}', ${product.price}, ${product.stock})">Add</button>
+      `;
+    }
+
+    // ✅ Add to cart
+    window.addToCart = function(barcode, name, price, stock) {
+      const qty = parseInt(document.getElementById("qty-input").value);
+      if (qty > stock) {
+        alert("Not enough stock!");
+        return;
+      }
+
+      const existing = cart.find(item => item.barcode === barcode);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        cart.push({ barcode, name, price, qty });
+      }
+      renderReceipt();
+    }
+
+    // ✅ Render receipt with qty
+    function renderReceipt() {
+      receiptItems.innerHTML = "";
+      let total = 0;
+      cart.forEach(item => {
+        total += item.price * item.qty;
+        receiptItems.innerHTML += `
+          <div>
+            <span>${item.name} (x${item.qty})</span>
+            <span>₦${(item.price * item.qty).toFixed(2)}</span>
+          </div>
+        `;
+      });
+      receiptTotal.innerText = `Total: ₦${total.toFixed(2)}`;
+    }
+
+    // ✅ Checkout: update Firestore & print
+    checkoutBtn.addEventListener("click", async () => {
+      try {
+        for (let item of cart) {
+          const docRef = doc(db, "products", item.barcode);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const currentStock = docSnap.data().stock;
+            const newStock = currentStock - item.qty;
+            if (newStock < 0) {
+              alert(`Not enough stock for ${item.name}`);
+              return;
+            }
+            await updateDoc(docRef, { stock: newStock });
+          }
+        }
+
+        // ✅ Print receipt with store details
+        let receiptHTML = `
+          <div style="text-align:center; font-family:monospace;">
+            <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
+            <p>Oppt, PDP Office, Oraozi Road, Port Harcourt, Rivers State</p>
+            <hr>
+            <h3>Purchase Receipt</h3>
+          </div>
+          <div style="font-family:monospace;">
+        `;
+        let total = 0;
+        cart.forEach(item => {
+          total += item.price * item.qty;
+          receiptHTML += `
+            <p>${item.name} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>
+          `;
+        });
+
+        receiptHTML += `
+            <hr>
+            <h3 style="text-align:right;">Total: ₦${total.toFixed(2)}</h3>
+            <p style="text-align:center;">Thank you for shopping with us!</p>
+          </div>
+        `;
+
+        const printWin = window.open("", "", "width=400,height=600");
+        printWin.document.write(receiptHTML);
+        printWin.document.close();
+        printWin.print();
+
+        alert("Checkout successful!");
+        cart = [];
+        renderReceipt();
+        productDetails.innerHTML = "";
+      } catch (err) {
+        console.error("Checkout error:", err);
+      }
+    });
+
+    // ✅ Manual search
+    document.getElementById("search-btn").addEventListener("click", () => {
+      const barcode = document.getElementById("manual-barcode").value.trim();
+      if (barcode) fetchProduct(barcode);
+    });
+
+    // ✅ Open Refund Modal
+    document.getElementById("open-refund").addEventListener("click", () => {
+      document.getElementById("refund-modal").style.display = "flex";
+    });
+
+    // ✅ Close Refund Modal
+    document.getElementById("close-refund").addEventListener("click", () => {
+      document.getElementById("refund-modal").style.display = "none";
+    });
+
+    // ✅ Handle Refund
+    document.getElementById("refund-btn").addEventListener("click", async () => {
+      const barcode = document.getElementById("refund-barcode").value.trim();
+      const qty = parseInt(document.getElementById("refund-qty").value);
+
+      if (!barcode || qty <= 0) {
+        alert("Enter a valid barcode and quantity!");
+        return;
+      }
+
+      try {
+        const docRef = doc(db, "products", barcode);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const product = docSnap.data();
+          const newStock = product.stock + qty;
+
+          await updateDoc(docRef, { stock: newStock });
+
+          // ✅ Show result
+          document.getElementById("refund-result").innerHTML = `
+            <p style="color:green;">
+              ✅ Refunded ${qty} x <b>${product.name}</b><br>
+              New Stock: ${newStock}
+            </p>
+          `;
+
+          // ✅ Print Refund Receipt
+          const refundWin = window.open("", "", "width=400,height=600");
+          refundWin.document.write(`
+            <div style="text-align:center; font-family:monospace;">
+              <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
+              <p>Oppt, PDP Office, Oraozi Road, Port Harcourt, Rivers State</p>
+              <hr>
+              <h3>REFUND RECEIPT</h3>
+            </div>
+            <div style="font-family:monospace;">
+              <p>Product: ${product.name}</p>
+              <p>Quantity Refunded: ${qty}</p>
+              <p>Date: ${new Date().toLocaleString()}</p>
+              <hr>
+              <p style="text-align:center;">Refund Processed</p>
+            </div>
+          `);
+          refundWin.document.close();
+          refundWin.print();
+
+        } else {
+          alert("Product not found!");
+        }
+      } catch (err) {
+        console.error("Refund error:", err);
+      }
+    });
+  </script>
   <style>
     body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
     .container { max-width: 700px; margin: 30px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     h1, h3 { text-align: center; }
-
-    /* Back button */
-    .back-btn {
-      display: inline-block;
-      margin: 20px;
-      padding: 10px 18px;
-      background: #6c757d;
-      color: #fff;
-      border-radius: 8px;
-      font-size: 14px;
-      text-decoration: none;
-      font-weight: bold;
-      transition: background 0.3s;
-    }
-    .back-btn:hover { background: #5a6268; }
-
     .search-container { display: flex; gap: 10px; margin-bottom: 20px; }
     .search-container input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
     .search-container button { padding: 10px 20px; border-radius: 8px; background: #28a745; color: white; border: none; cursor: pointer; }
@@ -35,14 +232,24 @@
     #receipt-total { font-size: 18px; font-weight: bold; margin-top: 10px; text-align: right; }
     button { margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: #007bff; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
     button:hover { background: #0056b3; }
+
+    /* Refund modal */
+    #refund-modal { 
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+      background:rgba(0,0,0,0.5); justify-content:center; align-items:center;
+    }
+    #refund-modal .modal-content {
+      background:#fff; padding:20px; border-radius:12px; width:300px; max-width:90%;
+    }
+    #refund-modal input, #refund-modal button { width:100%; margin-top:8px; padding:10px; border-radius:8px; }
+    #refund-btn { background:#dc3545; color:white; border:none; }
+    #close-refund { background:#6c757d; color:white; border:none; }
   </style>
 </head>
 <body>
-  <!-- ✅ Back Button -->
-  <a href="index.html" class="back-btn">⬅ Back</a>
-
   <div class="container">
     <h1>Sales</h1>
+
     <div class="section">
       <h3>Scan or Search Product</h3>
       <div id="reader" style="width:100%"></div>
@@ -62,10 +269,21 @@
         <div id="receipt-items"></div>
         <div id="receipt-total">Total: ₦0</div>
         <button id="checkout">Checkout & Print</button>
+        <button id="open-refund" style="background:#dc3545; margin-top:10px;">Refund</button>
       </div>
     </div>
   </div>
 
-  <!-- Keep your script logic here -->
+  <!-- Refund Modal -->
+  <div id="refund-modal">
+    <div class="modal-content">
+      <h3>Refund Product</h3>
+      <input type="text" id="refund-barcode" placeholder="Enter barcode to refund">
+      <input type="number" id="refund-qty" placeholder="Qty" min="1">
+      <button id="refund-btn">Refund</button>
+      <button id="close-refund">Cancel</button>
+      <div id="refund-result"></div>
+    </div>
+  </div>
 </body>
 </html>
