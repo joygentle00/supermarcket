@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Product - Inventory</title>
+    <script src="libs/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 500px;
+            margin: 30px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        form input, form button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        form button {
+            background: #007bff;
+            color: white;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        form button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 15px;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 15px;
+        }
+        .nav-btn {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .nav-btn a {
+            display: inline-block;
+            padding: 12px 20px;
+            background: #28a745;
+            color: #fff;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background 0.25s ease;
+        }
+        .nav-btn a:hover {
+            background: #1e7e34;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Add Product</h1>
+        
+        <div class="section">
+            <h3>Scan Product Barcode</h3>
+            <div id="reader" style="width:100%"></div>
+            <p id="scanned-barcode"></p>
+        </div>
+
+        <form id="product-form">
+            <input type="text" id="barcode" placeholder="Barcode (scan or type)" required>
+            <input type="text" id="name" placeholder="Product Name" required>
+            <input type="number" id="price" placeholder="Price" required>
+            <input type="number" id="stock" placeholder="Stock Quantity" required>
+            <button type="submit">Save Product</button>
+        </form>
+
+        <p id="message"></p>
+
+        <div class="nav-btn">
+            <a href="products.html">Go to Stock</a>
+        </div>
+    </div>
+
+    <script type="module">
+        // ✅ The correct way to import Firebase with modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        
+        // This is a global import from the script tag above, so it can be used here.
+        // If it was a module, you would need to import it here.
+        const Html5QrcodeScanner = window.Html5QrcodeScanner;
+
+        // ✅ Firebase Config (replace with your own)
+        const firebaseConfig = {
+  apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
+  authDomain: "sales-ebdb2.firebaseapp.com",
+  projectId: "sales-ebdb2",
+  storageBucket: "sales-ebdb2.firebasestorage.app",
+  messagingSenderId: "617047144694",
+  appId: "1:617047144694:web:91dc38072d0920e359d4d7",
+  measurementId: "G-08PJMBHSXN"
+};
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ✅ Handle form submit
+        const form = document.getElementById("product-form");
+        const message = document.getElementById("message");
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const barcode = document.getElementById("barcode").value.trim();
+            const name = document.getElementById("name").value.trim();
+            const price = parseFloat(document.getElementById("price").value);
+            const stock = parseInt(document.getElementById("stock").value);
+
+            try {
+                await setDoc(doc(db, "products", barcode), {
+                    name,
+                    price,
+                    stock
+                });
+                message.textContent = "✅ Product added successfully!";
+                message.className = "success";
+                form.reset();
+            } catch (err) {
+                message.textContent = "❌ Error: " + err.message;
+                message.className = "error";
+                console.error("Error adding document: ", err);
+            }
+        });
+
+        // ✅ Barcode Scanner
+        function onScanSuccess(decodedText) {
+            document.getElementById("barcode").value = decodedText;
+            document.getElementById("scanned-barcode").textContent = "Scanned: " + decodedText;
+        }
+        function onScanError(errorMessage) {
+            // ignore errors
+        }
+
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 });
+        html5QrcodeScanner.render(onScanSuccess, onScanError);
+    </script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Products - Inventory</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f9;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 800px;
+      margin: 30px auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 10px 16px;
+      background: #007bff;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+    .btn:hover {
+      background: #0056b3;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      padding: 12px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+    th {
+      background: #007bff;
+      color: white;
+    }
+    tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+    tr:hover {
+      background: #f1f1f1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>All Products</h1>
+    <a href="index.html" class="btn">⬅ Back to Home</a>
+
+    <div class="section">
+      <table id="products-table">
+        <thead>
+          <tr>
+            <th>Barcode</th>
+            <th>Name</th>
+            <th>Price (₦)</th>
+            <th>Stock</th>
+          </tr>
+        </thead>
+        <tbody id="products-body">
+          <tr><td colspan="4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // ✅ Firebase config (same as inventory.html)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
+      authDomain: "sales-ebdb2.firebaseapp.com",
+      projectId: "sales-ebdb2",
+      storageBucket: "sales-ebdb2.firebasestorage.app",
+      messagingSenderId: "617047144694",
+      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
+      measurementId: "G-08PJMBHSXN"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const productsBody = document.getElementById("products-body");
+
+    async function loadProducts() {
+      productsBody.innerHTML = "<tr><td colspan='4'>Loading...</td></tr>";
+
+      try {
+        const querySnapshot = await getDocs(collection(db, "products"));
+        productsBody.innerHTML = ""; // clear
+
+        if (querySnapshot.empty) {
+          productsBody.innerHTML = "<tr><td colspan='4'>No products found.</td></tr>";
+          return;
+        }
+
+        querySnapshot.forEach(doc => {
+          const product = doc.data();
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${doc.id}</td>
+            <td>${product.name}</td>
+            <td>₦${Number(product.price).toFixed(2)}</td>
+            <td>${product.stock}</td>
+          `;
+          productsBody.appendChild(row);
+        });
+
+      } catch (error) {
+        console.error("Error loading products:", error);
+        productsBody.innerHTML = "<tr><td colspan='4'>Error loading products</td></tr>";
+      }
+    }
+
+    loadProducts();
+  </script>
+</body>
+</html>
