@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
+      authDomain: "sales-ebdb2.firebaseapp.com",
+      projectId: "sales-ebdb2",
+      storageBucket: "sales-ebdb2.firebasestorage.app",
+      messagingSenderId: "617047144694",
+      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
+      measurementId: "G-08PJMBHSXN"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    async function loadHistory() {
+      // Clear existing content
+      document.getElementById("sales-history").innerHTML = "";
+      document.getElementById("refund-history").innerHTML = "";
+
+      let todayTotal = 0;
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+
+      // Fetch sales history for today
+      const salesQuery = query(collection(db, "salesHistory"), 
+        where("date", ">=", startOfToday),
+        where("date", "<=", endOfToday),
+        orderBy("date", "desc")
+      );
+      const salesSnapshot = await getDocs(salesQuery);
+      
+      const salesTable = document.getElementById("sales-history");
+      salesSnapshot.forEach(doc => {
+        const data = doc.data();
+        todayTotal += data.total;
+        let itemsList = data.items.map(item => `${item.name} (x${item.qty}) - ₦${(item.price * item.qty).toFixed(2)}`).join("<br>");
+        salesTable.innerHTML += `
+          <tr>
+            <td>${data.date.toDate().toLocaleString()}</td>
+            <td>${itemsList}</td>
+            <td>₦${data.total.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+
+      // Display the total sales for the day
+      document.getElementById("daily-total-amount").innerText = `₦${todayTotal.toFixed(2)}`;
+
+      // Fetch refund history ordered by date
+      const refundQuery = query(collection(db, "refundHistory"), 
+        where("date", ">=", startOfToday),
+        where("date", "<=", endOfToday),
+        orderBy("date", "desc")
+      );
+      const refundSnapshot = await getDocs(refundQuery);
+
+      const refundTable = document.getElementById("refund-history");
+      refundSnapshot.forEach(doc => {
+        const data = doc.data();
+        refundTable.innerHTML += `
+          <tr>
+            <td>${data.date.toDate().toLocaleString()}</td>
+            <td>${data.product}</td>
+            <td>${data.qty}</td>
+          </tr>
+        `;
+      });
+    }
+
+    window.onload = loadHistory;
+  </script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
+    h1 { text-align: center; }
+    .daily-total { text-align: right; font-size: 1.5rem; font-weight: bold; margin: 20px 0; padding: 10px; border-top: 2px solid #007bff; border-bottom: 2px solid #007bff; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 10px; text-align: left; }
+    th { background: #007bff; color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    a { display:block; margin-bottom:15px; color:#007bff; text-decoration:none; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <a href="index.html">⬅ Back to Sales</a>
+  <h1>Transaction History</h1>
+
+  <div class="daily-total">
+    Today's Total Sales: <span id="daily-total-amount">₦0.00</span>
+  </div>
+
+  <h2>Sales History</h2>
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Items</th><th>Total</th></tr>
+    </thead>
+    <tbody id="sales-history"></tbody>
+  </table>
+
+  <h2>Refund History</h2>
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Product</th><th>Qty</th></tr>
+    </thead>
+    <tbody id="refund-history"></tbody>
+  </table>
+</body>
+</html>

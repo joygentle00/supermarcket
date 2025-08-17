@@ -7,7 +7,7 @@
   <script src="libs/html5-qrcode.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // ✅ Firebase config
     const firebaseConfig = {
@@ -80,7 +80,7 @@
       if (existing) {
         existing.qty += qty;
       } else {
-        cart.push({ barcode, name, price, qty });
+        cart.push({ barcode, name, price, qty, stock });
       }
       renderReceipt();
     }
@@ -103,6 +103,11 @@
 
     // ✅ Checkout: update Firestore & print
     checkoutBtn.addEventListener("click", async () => {
+      if (cart.length === 0) {
+        alert("The cart is empty!");
+        return;
+      }
+
       try {
         for (let item of cart) {
           const docRef = doc(db, "products", item.barcode);
@@ -118,12 +123,20 @@
           }
         }
 
+        // ✅ Save to sales history
+        const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+        await addDoc(collection(db, "salesHistory"), {
+          items: cart.map(item => ({ name: item.name, qty: item.qty, price: item.price })),
+          total: total,
+          date: serverTimestamp() // Use server timestamp for accuracy
+        });
+
         // ✅ Print receipt auto-fit
         let receiptHTML = `
           <div style="text-align:center; font-family:monospace;">
             <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
             <p>Oppt, PDP Office, <br>Oraozi Road, Port Harcourt</p>
-            <p>08143084200, 09054796445</p>
+            <p>081430842000, 09054796445</p>
             <p>Date: ${new Date().toLocaleString()}</p>
             <hr>
             <p>Cashier: Staff!</p>
@@ -133,9 +146,8 @@
           </div>
           <div style="font-family:monospace;">
         `;
-        let total = 0;
+        
         cart.forEach(item => {
-          total += item.price * item.qty;
           receiptHTML += `<p>${item.name} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>`;
         });
 
@@ -157,6 +169,7 @@
         productDetails.innerHTML = "";
       } catch (err) {
         console.error("Checkout error:", err);
+        alert("An error occurred during checkout.");
       }
     });
 
@@ -174,6 +187,7 @@
     // ✅ Close Refund Modal
     document.getElementById("close-refund").addEventListener("click", () => {
       document.getElementById("refund-modal").style.display = "none";
+      document.getElementById("refund-result").innerHTML = ""; // Clear result message
     });
 
     // ✅ Handle Refund
@@ -181,7 +195,7 @@
       const barcode = document.getElementById("refund-barcode").value.trim();
       const qty = parseInt(document.getElementById("refund-qty").value);
 
-      if (!barcode || qty <= 0) {
+      if (!barcode || qty <= 0 || isNaN(qty)) {
         alert("Enter a valid barcode and quantity!");
         return;
       }
@@ -195,6 +209,13 @@
           const newStock = product.stock + qty;
           await updateDoc(docRef, { stock: newStock });
 
+          // ✅ Save to refund history
+          await addDoc(collection(db, "refundHistory"), {
+            product: product.name,
+            qty: qty,
+            date: serverTimestamp()
+          });
+
           document.getElementById("refund-result").innerHTML = `
             <p style="color:green;">✅ Refunded ${qty} x <b>${product.name}</b><br>New Stock: ${newStock}</p>
           `;
@@ -205,6 +226,7 @@
             <div style="text-align:center; font-family:monospace;">
               <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
               <p>Oppt, PDP Office, Oraozi Road, Port Harcourt</p>
+              <p>081430842000, 09054796445</p>
               <hr>
               <h3>REFUND RECEIPT</h3>
             </div>
@@ -219,10 +241,11 @@
           refundWin.document.close();
           refundWin.print();
         } else {
-          alert("❌ Product not found!");
+          document.getElementById("refund-result").innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
         }
       } catch (err) {
         console.error("Refund error:", err);
+        alert("An error occurred during refund.");
       }
     });
   </script>
@@ -278,12 +301,12 @@
         <div id="receipt-items"></div>
         <div id="receipt-total">Total: ₦0</div>
         <button id="checkout">Checkout & Print</button>
+        <button id="clear-cart" style="background:#6c757d; margin-top:10px;">Clear Cart</button>
         <button id="open-refund" style="background:#dc3545; margin-top:10px;">Refund</button>
       </div>
     </div>
   </div>
 
-  <!-- Refund Modal -->
   <div id="refund-modal">
     <div class="modal-content">
       <h3>Refund Product</h3>
@@ -294,5 +317,15 @@
       <div id="refund-result"></div>
     </div>
   </div>
+  <script>
+    // ✅ Clear Cart button
+    document.getElementById("clear-cart").addEventListener("click", () => {
+      if (confirm("Are you sure you want to clear the cart?")) {
+        cart = [];
+        renderReceipt();
+        productDetails.innerHTML = "";
+      }
+    });
+  </script>
 </body>
 </html>
