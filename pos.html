@@ -5,6 +5,250 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sales Page</title>
   <script src="libs/html5-qrcode.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // ✅ Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
+      authDomain: "sales-ebdb2.firebaseapp.com",
+      projectId: "sales-ebdb2",
+      storageBucket: "sales-ebdb2.firebasestorage.app",
+      messagingSenderId: "617047144694",
+      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
+      measurementId: "G-08PJMBHSXN"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const productDetails = document.getElementById("product-details");
+    const receiptItems = document.getElementById("receipt-items");
+    const receiptTotal = document.getElementById("receipt-total");
+    const checkoutBtn = document.getElementById("checkout");
+
+    let cart = [];
+
+    // ✅ Fetch product by barcode
+    async function fetchProduct(barcode) {
+      try {
+        const docRef = doc(db, "products", barcode);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const product = docSnap.data();
+          showProduct(product, barcode);
+        } else {
+          productDetails.innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
+        }
+      } catch (err) {
+        console.error("Error fetching:", err);
+      }
+    }
+
+    // ✅ Show product with qty option
+    function showProduct(product, barcode) {
+      productDetails.innerHTML = `
+        <h3>${product.name}</h3>
+        <p>Price: ₦${product.price}</p>
+        <p>Stock: ${product.stock}</p>
+        <div style="display:flex; gap:5px; align-items:center;">
+          <button onclick="changeQty(-1)">➖</button>
+          <input type="number" id="qty-input" value="1" min="1" max="${product.stock}" style="width:60px; text-align:center;">
+          <button onclick="changeQty(1)">➕</button>
+        </div>
+        <button onclick="addToCart('${barcode}', '${product.name}', ${product.price}, ${product.stock})">Add to Cart</button>
+      `;
+    }
+
+    // ✅ Quantity +/- button
+    window.changeQty = function(delta) {
+      const input = document.getElementById("qty-input");
+      let value = parseInt(input.value) + delta;
+      if (value < 1) value = 1;
+      input.value = value;
+    }
+
+    // ✅ Add to cart
+    window.addToCart = function(barcode, name, price, stock) {
+      const qty = parseInt(document.getElementById("qty-input").value);
+      if (qty > stock) {
+        alert("Not enough stock!");
+        return;
+      }
+
+      const existing = cart.find(item => item.barcode === barcode);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        cart.push({ barcode, name, price, qty, stock });
+      }
+      renderReceipt();
+    }
+
+    // ✅ Render receipt
+    function renderReceipt() {
+      receiptItems.innerHTML = "";
+      let total = 0;
+      cart.forEach(item => {
+        total += item.price * item.qty;
+        receiptItems.innerHTML += `
+          <div>
+            <span>${item.name} (x${item.qty})</span>
+            <span>₦${(item.price * item.qty).toFixed(2)}</span>
+          </div>
+        `;
+      });
+      receiptTotal.innerText = `Total: ₦${total.toFixed(2)}`;
+    }
+
+    // ✅ Checkout: update Firestore & print
+    checkoutBtn.addEventListener("click", async () => {
+      if (cart.length === 0) {
+        alert("The cart is empty!");
+        return;
+      }
+
+      try {
+        for (let item of cart) {
+          const docRef = doc(db, "products", item.barcode);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const currentStock = docSnap.data().stock;
+            const newStock = currentStock - item.qty;
+            if (newStock < 0) {
+              alert(`Not enough stock for ${item.name}`);
+              return;
+            }
+            await updateDoc(docRef, { stock: newStock });
+          }
+        }
+
+        // ✅ Save to sales history
+        const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+        await addDoc(collection(db, "salesHistory"), {
+          items: cart.map(item => ({ name: item.name, qty: item.qty, price: item.price })),
+          total: total,
+          date: serverTimestamp() // Use server timestamp for accuracy
+        });
+
+        // ✅ Print receipt auto-fit
+        let receiptHTML = `
+          <div style="text-align:center; font-family:monospace;">
+            <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
+            <p>Oppt, PDP Office, <br>Oraozi Road, Port Harcourt</p>
+            <p>081430842000, 09054796445</p>
+            <p>Date: ${new Date().toLocaleString()}</p>
+            <hr>
+            <p>Manager: Mrs. Kingsley</p>
+            <hr>
+            <h3>Purchase Receipt</h3>
+          </div>
+          <div style="font-family:monospace;">
+        `;
+        
+        cart.forEach(item => {
+          receiptHTML += `<p>${item.name} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>`;
+        });
+
+        receiptHTML += `
+            <hr>
+            <h3 style="text-align:right;">Total: ₦${total.toFixed(2)}</h3>
+            <p style="text-align:center;">✅ Thank you for shopping with us!</p>
+          </div>
+        `;
+
+        const printWin = window.open("", "", "width=400,height=auto");
+        printWin.document.write(receiptHTML);
+        printWin.document.close();
+        printWin.print();
+
+        alert("✅ Checkout successful!");
+        cart = [];
+        renderReceipt();
+        productDetails.innerHTML = "";
+      } catch (err) {
+        console.error("Checkout error:", err);
+        alert("An error occurred during checkout.");
+      }
+    });
+
+    // ✅ Manual search
+    document.getElementById("search-btn").addEventListener("click", () => {
+      const barcode = document.getElementById("manual-barcode").value.trim();
+      if (barcode) fetchProduct(barcode);
+    });
+
+    // ✅ Open Refund Modal
+    document.getElementById("open-refund").addEventListener("click", () => {
+      document.getElementById("refund-modal").style.display = "flex";
+    });
+
+    // ✅ Close Refund Modal
+    document.getElementById("close-refund").addEventListener("click", () => {
+      document.getElementById("refund-modal").style.display = "none";
+      document.getElementById("refund-result").innerHTML = ""; // Clear result message
+    });
+
+    // ✅ Handle Refund
+    document.getElementById("refund-btn").addEventListener("click", async () => {
+      const barcode = document.getElementById("refund-barcode").value.trim();
+      const qty = parseInt(document.getElementById("refund-qty").value);
+
+      if (!barcode || qty <= 0 || isNaN(qty)) {
+        alert("Enter a valid barcode and quantity!");
+        return;
+      }
+
+      try {
+        const docRef = doc(db, "products", barcode);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const product = docSnap.data();
+          const newStock = product.stock + qty;
+          await updateDoc(docRef, { stock: newStock });
+
+          // ✅ Save to refund history
+          await addDoc(collection(db, "refundHistory"), {
+            product: product.name,
+            qty: qty,
+            date: serverTimestamp()
+          });
+
+          document.getElementById("refund-result").innerHTML = `
+            <p style="color:green;">✅ Refunded ${qty} x <b>${product.name}</b><br>New Stock: ${newStock}</p>
+          `;
+
+          // ✅ Print refund receipt
+          const refundWin = window.open("", "", "width=400,height=auto");
+          refundWin.document.write(`
+            <div style="text-align:center; font-family:monospace;">
+              <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
+              <p>Oppt, PDP Office, Oraozi Road, Port Harcourt</p>
+              <p>081430842000, 09054796445</p>
+              <hr>
+              <h3>REFUND RECEIPT</h3>
+            </div>
+            <div style="font-family:monospace;">
+              <p>Product: ${product.name}</p>
+              <p>Quantity Refunded: ${qty}</p>
+              <p>Date: ${new Date().toLocaleString()}</p>
+              <hr>
+              <p style="text-align:center;">Refund Processed</p>
+            </div>
+          `);
+          refundWin.document.close();
+          refundWin.print();
+        } else {
+          document.getElementById("refund-result").innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
+        }
+      } catch (err) {
+        console.error("Refund error:", err);
+        alert("An error occurred during refund.");
+      }
+    });
+  </script>
+
   <style>
     body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
     .container { max-width: 700px; margin: 30px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -31,41 +275,25 @@
     #refund-modal input, #refund-modal button { width:100%; margin-top:8px; padding:10px; border-radius:8px; }
     #refund-btn { background:#dc3545; color:white; border:none; }
     #close-refund { background:#6c757d; color:white; border:none; }
-
-    /* Print-specific styles for Xprinter (80mm paper) */
-    @media print {
-      body, html { margin: 0; padding: 0; width: 100%; }
-      .container, #refund-modal, .section, button, #reader, #product-details, #receipt-area, script { display: none !important; }
-      .receipt-content {
-        display: block !important;
-        width: 300px; /* 80mm paper */
-        margin: 0;
-        padding: 0;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 8px; /* Reduced for compactness */
-        line-height: 1.0;
-      }
-      .receipt-content h2 { font-size: 10px; margin: 0; }
-      .receipt-content h3 { font-size: 8px; margin: 0; }
-      .receipt-content p { margin: 0; }
-      .receipt-content hr { border: none; border-top: 1px dashed #000; margin: 1px 0; }
-      @page { margin: 0; size: 80mm auto; }
-    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Sales</h1>
+
     <div class="section">
       <h3>Scan or Search Product</h3>
       <div id="reader" style="width:100%"></div>
       <p id="scanned-barcode"></p>
     </div>
+    
     <div class="search-container">
       <input type="text" id="manual-barcode" placeholder="Enter barcode manually">
       <button id="search-btn">Search</button>
     </div>
+
     <div id="product-details"></div>
+
     <div class="section">
       <h3>Receipt</h3>
       <div id="receipt-area">
@@ -77,6 +305,7 @@
       </div>
     </div>
   </div>
+
   <div id="refund-modal">
     <div class="modal-content">
       <h3>Refund Product</h3>
@@ -87,301 +316,8 @@
       <div id="refund-result"></div>
     </div>
   </div>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBpcuAHsy27Jta7yo7UJAB350PwLKr9Rgs",
-      authDomain: "sales-ebdb2.firebaseapp.com",
-      projectId: "sales-ebdb2",
-      storageBucket: "sales-ebdb2.firebasestorage.app",
-      messagingSenderId: "617047144694",
-      appId: "1:617047144694:web:91dc38072d0920e359d4d7",
-      measurementId: "G-08PJMBHSXN"
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const productDetails = document.getElementById("product-details");
-    const receiptItems = document.getElementById("receipt-items");
-    const receiptTotal = document.getElementById("receipt-total");
-    const checkoutBtn = document.getElementById("checkout");
-    let cart = [];
-
-    const sanitize = (str) => {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML.replace(/[<>"]/g, '');
-    };
-
-    async function fetchProduct(barcode) {
-      try {
-        const docRef = doc(db, "products", barcode);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const product = docSnap.data();
-          showProduct(product, barcode);
-        } else {
-          productDetails.innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
-        }
-      } catch (err) {
-        console.error("Error fetching:", err);
-      }
-    }
-
-    function showProduct(product, barcode) {
-      productDetails.innerHTML = `
-        <h3>${sanitize(product.name)}</h3>
-        <p>Price: ₦${product.price}</p>
-        <p>Stock: ${product.stock}</p>
-        <div style="display:flex; gap:5px; align-items:center;">
-          <button onclick="changeQty(-1)">➖</button>
-          <input type="number" id="qty-input" value="1" min="1" max="${product.stock}" style="width:60px; text-align:center;">
-          <button onclick="changeQty(1)">➕</button>
-        </div>
-        <button onclick="addToCart('${barcode}', '${sanitize(product.name)}', ${product.price}, ${product.stock})">Add to Cart</button>
-      `;
-    }
-
-    window.changeQty = function(delta) {
-      const input = document.getElementById("qty-input");
-      let value = parseInt(input.value) + delta;
-      if (value < 1) value = 1;
-      input.value = value;
-    }
-
-    window.addToCart = function(barcode, name, price, stock) {
-      const qty = parseInt(document.getElementById("qty-input").value);
-      if (qty > stock) {
-        alert("Not enough stock!");
-        return;
-      }
-      const existing = cart.find(item => item.barcode === barcode);
-      if (existing) {
-        existing.qty += qty;
-      } else {
-        cart.push({ barcode, name, price, qty, stock });
-      }
-      renderReceipt();
-    }
-
-    function renderReceipt() {
-      receiptItems.innerHTML = "";
-      let total = 0;
-      cart.forEach(item => {
-        total += item.price * item.qty;
-        receiptItems.innerHTML += `
-          <div>
-            <span>${sanitize(item.name)} (x${item.qty})</span>
-            <span>₦${(item.price * item.qty).toFixed(2)}</span>
-          </div>
-        `;
-      });
-      receiptTotal.innerText = `Total: ₦${total.toFixed(2)}`;
-    }
-
-    checkoutBtn.addEventListener("click", async () => {
-      if (cart.length === 0) {
-        alert("The cart is empty!");
-        return;
-      }
-      try {
-        for (let item of cart) {
-          const docRef = doc(db, "products", item.barcode);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const currentStock = docSnap.data().stock;
-            const newStock = currentStock - item.qty;
-            if (newStock < 0) {
-              alert(`Not enough stock for ${item.name}`);
-              return;
-            }
-            await updateDoc(docRef, { stock: newStock });
-          }
-        }
-        const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-        await addDoc(collection(db, "salesHistory"), {
-          items: cart.map(item => ({ name: item.name, qty: item.qty, price: item.price })),
-          total: total,
-          date: serverTimestamp()
-        });
-
-        // Print receipt
-        let receiptHTML = `
-          <div class="receipt-content">
-            <div style="text-align:center;">
-              <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
-              <p>Oppt, PDP Office, Oraozi Road, Port Harcourt</p>
-              <p>081430842000, 09054796445</p>
-              <p>Date: ${new Date().toLocaleString()}</p>
-              <hr>
-              <p>Manager: Mrs. Kingsley</p>
-              <hr>
-              <h3>Purchase Receipt</h3>
-            </div>
-            <div>
-        `;
-        cart.forEach(item => {
-          receiptHTML += `<p>${sanitize(item.name)} x${item.qty} - ₦${(item.price * item.qty).toFixed(2)}</p>`;
-        });
-        receiptHTML += `
-              <hr>
-              <h3 style="text-align:right;">Total: ₦${total.toFixed(2)}</h3>
-              <p style="text-align:center;">Thank you for shopping with us!</p>
-            </div>
-          </div>
-        `;
-
-        const printWin = window.open("", "_blank", "width=400,height=auto");
-        printWin.document.open('text/html', 'replace');
-        printWin.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="UTF-8">
-              <title>Receipt</title>
-              <style>
-                body, html { margin: 0; padding: 0; }
-                .receipt-content {
-                  width: 300px; /* 80mm paper */
-                  font-family: 'Courier New', Courier, monospace;
-                  font-size: 8px;
-                  line-height: 1.0;
-                }
-                .receipt-content h2 { font-size: 10px; margin: 0; }
-                .receipt-content h3 { font-size: 8px; margin: 0; }
-                .receipt-content p { margin: 0; }
-                .receipt-content hr { border: none; border-top: 1px dashed #000; margin: 1px 0; }
-              </style>
-            </head>
-            <body>${receiptHTML}</body>
-          </html>
-        `);
-        printWin.document.close();
-        printWin.focus();
-        setTimeout(() => {
-          try {
-            printWin.print();
-            printWin.close();
-          } catch (printErr) {
-            console.error("Print error:", printErr);
-            alert("Failed to print receipt. Please check printer settings.");
-          }
-        }, 500);
-
-        alert("✅ Checkout successful!");
-        cart = [];
-        renderReceipt();
-        productDetails.innerHTML = "";
-      } catch (err) {
-        console.error("Checkout error:", err);
-        alert("An error occurred during checkout.");
-      }
-    });
-
-    document.getElementById("search-btn").addEventListener("click", () => {
-      const barcode = document.getElementById("manual-barcode").value.trim();
-      if (barcode) fetchProduct(barcode);
-    });
-
-    document.getElementById("open-refund").addEventListener("click", () => {
-      document.getElementById("refund-modal").style.display = "flex";
-    });
-
-    document.getElementById("close-refund").addEventListener("click", () => {
-      document.getElementById("refund-modal").style.display = "none";
-      document.getElementById("refund-result").innerHTML = "";
-    });
-
-    document.getElementById("refund-btn").addEventListener("click", async () => {
-      const barcode = document.getElementById("refund-barcode").value.trim();
-      const qty = parseInt(document.getElementById("refund-qty").value);
-      if (!barcode || qty <= 0 || isNaN(qty)) {
-        alert("Enter a valid barcode and quantity!");
-        return;
-      }
-      try {
-        const docRef = doc(db, "products", barcode);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const product = docSnap.data();
-          const newStock = product.stock + qty;
-          await updateDoc(docRef, { stock: newStock });
-          await addDoc(collection(db, "refundHistory"), {
-            product: product.name,
-            qty: qty,
-            date: serverTimestamp()
-          });
-          document.getElementById("refund-result").innerHTML = `
-            <p style="color:green;">✅ Refunded ${qty} x <b>${sanitize(product.name)}</b><br>New Stock: ${newStock}</p>
-          `;
-
-          // Print refund receipt
-          const refundWin = window.open("", "_blank", "width=400,height=auto");
-          refundWin.document.open('text/html', 'replace');
-          refundWin.document.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="UTF-8">
-                <title>Refund Receipt</title>
-                <style>
-                  body, html { margin: 0; padding: 0; }
-                  .receipt-content {
-                    width: 300px; /* 80mm paper */
-                    font-family: 'Courier New', Courier, monospace;
-                    font-size: 8px;
-                    line-height: 1.0;
-                  }
-                  .receipt-content h2 { font-size: 10px; margin: 0; }
-                  .receipt-content h3 { font-size: 8px; margin: 0; }
-                  .receipt-content p { margin: 0; }
-                  .receipt-content hr { border: none; border-top: 1px dashed #000; margin: 1px 0; }
-                </style>
-              </head>
-              <body>
-                <div class="receipt-content">
-                  <div style="text-align:center;">
-                    <h2>K.AHA-GOD-ENTER. SUPERMARKET</h2>
-                    <p>Oppt, PDP Office, Oraozi Road, Port Harcourt</p>
-                    <p>081430842000, 09054796445</p>
-                    <hr>
-                    <h3>REFUND RECEIPT</h3>
-                  </div>
-                  <div>
-                    <p>Product: ${sanitize(product.name)}</p>
-                    <p>Quantity Refunded: ${qty}</p>
-                    <p>Date: ${new Date().toLocaleString()}</p>
-                    <hr>
-                    <p style="text-align:center;">Refund Processed</p>
-                  </div>
-                </div>
-              </body>
-            </html>
-          `);
-          refundWin.document.close();
-          refundWin.focus();
-          setTimeout(() => {
-            try {
-              refundWin.print();
-              refundWin.close();
-            } catch (printErr) {
-              console.error("Refund print error:", printErr);
-              alert("Failed to print refund receipt. Please check printer settings.");
-            }
-          }, 500);
-        } else {
-          document.getElementById("refund-result").innerHTML = "<p style='color:red;'>❌ Product not found!</p>";
-        }
-      } catch (err) {
-        console.error("Refund error:", err);
-        alert("An error occurred during refund.");
-      }
-    });
-  </script>
   <script>
+    // ✅ Clear Cart button
     document.getElementById("clear-cart").addEventListener("click", () => {
       if (confirm("Are you sure you want to clear the cart?")) {
         cart = [];
